@@ -1,0 +1,364 @@
+'use strict';
+
+const doc = require('dynamodb-doc');
+const dynamoDB = new doc.DynamoDB();
+
+exports.handler = (event, context, callback) => {
+  
+    console.log("Step 1: Constant declarations");
+    
+    const COMPANY_NAME="anyasas";
+    console.log("Step 1.1: Company name => " + COMPANY_NAME)
+    
+    const SERVICE_NAME="hardwares";
+    console.log("Step 1.2: Service name => " + SERVICE_NAME)
+    
+    const DYNAMO_TABLE="hardwares"; 
+    console.log("Step 1.3: Table used => " + DYNAMO_TABLE);
+    
+    const HELP_LINK = "http://documentations.anyasas.com/v1/" + SERVICE_NAME ;
+    console.log("Step 1.4: Help link => " + HELP_LINK);
+    
+    const TENANT_PATTERN = "^[A-z0-9_]+$";
+    console.log("Step 1.5: Tenant pattern => " + TENANT_PATTERN);
+    
+    const LOG_PATTERN = "^[ A-z0-9_%;,:!/><'*\-=#\\\\]+$";
+    console.log("Step 1.6: Log pattern => " + LOG_PATTERN);
+    
+    const ID_PATTERN = "^[A-z0-9_]+$";
+    console.log("Step 1.7: Id pattern => " + ID_PATTERN);
+    
+    console.log("Step 1.8: Preload message template")
+    const httpAnswer = {
+        statusCode: 599, 
+        body: '',
+        headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+        }
+    }
+    
+    console.log("Step 1.9: Preload all possible message values");
+    const MESSAGES = {
+        POST_OK: { 
+            HTTP_CODE: 201,
+            HEADER_CODE: 201,
+            HEADER_TEXT: "Item has been created",
+            CONSOL_TEXT: "Item has been created"
+        },
+        POST_KO: {  
+            HTTP_CODE: 400,
+            HEADER_CODE: 450,
+            HEADER_TEXT: "The Dynamo DB answer gives back an error object",
+            CONSOL_TEXT: "The Dynamo DB answer gives back an error object"
+        },
+        POST_KO_EXIST: {  
+            HTTP_CODE: 400,
+            HEADER_CODE: 458,
+            HEADER_TEXT: "The JSON item with the given id already exists",
+            CONSOL_TEXT: "The JSON item with the given id already exists"
+        },
+        ERROR_ON_EVENT: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 433,
+            HEADER_TEXT: "None lambda event has been detected",
+            CONSOL_TEXT: "None lambda event has been detected"
+        },
+        ERROR_ON_HEADERS: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 434,
+            HEADER_TEXT: "Header parameters are mandatory",
+            CONSOL_TEXT: "Header parameters are mandatory"
+        },
+        ERROR_ON_ACCEPT: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 435,
+            HEADER_TEXT: "Header parameter Accept is mandatory and must be: application/json",
+            CONSOL_TEXT: "Header parameter Accept is mandatory and must be: application/json"
+        },
+        ERROR_ON_TENANT: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 436,
+            HEADER_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' parameter is mandatory",
+            CONSOL_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' parameter is mandatory"
+        },
+        ERROR_ON_TENANT_STRING: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 437,
+            HEADER_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' parameter is not a string or empty",
+            CONSOL_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' parameter is not a string or empty"
+        },
+        ERROR_ON_TENANT_MAXSIZE: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 438,
+            HEADER_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' parameter is too long ( > 255)",
+            CONSOL_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' parameter is too long ( > 255)"
+        },
+        ERROR_ON_TENANT_FORMAT: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 439,
+            HEADER_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' does not followed the pattern",
+            CONSOL_TEXT: "Header parameter named 'tenant' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant' does not followed the pattern"
+        },
+        ERROR_ON_LOG_STRING: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 440,
+            HEADER_TEXT: "Header parameter named 'log' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log' parameter is not a string or empty",
+            CONSOL_TEXT: "Header parameter named 'log' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log' parameter is not a string or empty"
+        },
+        ERROR_ON_LOG_MAXSIZE: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 441,
+            HEADER_TEXT: "Header parameter named 'log' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log' parameter is too long ( > 255)",
+            CONSOL_TEXT: "Header parameter named 'log' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log' parameter is too long ( > 255)"
+        },
+        ERROR_ON_LOG_FORMAT: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 442,
+            HEADER_TEXT: "Header parameter named 'log' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log' does not followed the pattern",
+            CONSOL_TEXT: "Header parameter named 'log' - 'x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log' does not followed the pattern"
+        },
+        ERROR_ON_CONTEXT: {
+            HTTP_CODE: 405,
+            HEADER_CODE: 443,
+            HEADER_TEXT: "None lambda event context has been detected",
+            CONSOL_TEXT: "None lambda event context has been detected"
+        },
+        ERROR_ON_VERB: {
+            HTTP_CODE: 405,
+            HEADER_CODE: 444,
+            HEADER_TEXT: "HTTP verb is not valid (authorized: POST, GET, PUT, PATCH, DELETE)",
+            CONSOL_TEXT: "HTTP verb is not valid (authorized: POST, GET, PUT, PATCH, DELETE)" + event.httpMethod + "' has been detected instead."
+        },
+        ERROR_ON_PATH: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 445,
+            HEADER_TEXT: "Path parameters are not defined",
+            CONSOL_TEXT: "Path parameters are not defined"
+        },
+        ERROR_ON_PATH_ID: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 446,
+            HEADER_TEXT: "Path id parameters is not defined",
+            CONSOL_TEXT: "Path id parameters is not defined"
+        },
+        ERROR_ON_PATH_ID_STRING: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 447,
+            HEADER_TEXT: "Path id parameter is not a string or is an empty string",
+            CONSOL_TEXT: "Path id parameter is not a string or is an empty string"
+        },
+        ERROR_ON_PATH_ID_MAXSIZE: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 448,
+            HEADER_TEXT: "Path id parameter is a too long string (>255)",
+            CONSOL_TEXT: "Path id parameter is a too long string (>255)"
+        },
+        ERROR_ON_PATH_ID_FORMAT: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 449,
+            HEADER_TEXT: "Identifier does not followed the pattern",
+            CONSOL_TEXT: "Identifier does not followed the pattern"
+        },
+        ERROR_ON_BODY: {
+            HTTP_CODE: 405,
+            HEADER_CODE: 451,
+            HEADER_TEXT: "None JSON HTTP body have been found",
+            CONSOL_TEXT: "None JSON HTTP body have been found"
+        },
+        ERROR_ON_ID: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 452,
+            HEADER_TEXT: "Body attribute id is not the same that in the path",
+            CONSOL_TEXT: "Body attribute id is not the same that in the path"
+        },
+        ERROR_ON_JSON1: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 453,
+            HEADER_TEXT: "The JSON item received within the body of the HTTP message could not be parsed",
+            CONSOL_TEXT: "The JSON item received within the body of the HTTP message could not be parsed"
+        },
+        ERROR_ON_JSON2: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 454,
+            HEADER_TEXT: "The JSON item received within the body of the HTTP message is undefined after parsing",
+            CONSOL_TEXT: "The JSON item received within the body of the HTTP message is undefined after parsing"
+        },
+        ERROR_ON_JSON3: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 459,
+            HEADER_TEXT: "The JSON item received within the body of the HTTP message is undefined after parsing",
+            CONSOL_TEXT: "The JSON item received within the body of the HTTP message is undefined after parsing"
+        },
+        ERROR_ON_JSON_ID: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 455,
+            HEADER_TEXT: "The JSON item received does not contain the mandatory attribute 'id' which is the unique identifier of the item",
+            CONSOL_TEXT: "The JSON item received does not contain the mandatory attribute 'id' which is the unique identifier of the item"
+        },
+        ERROR_ON_JSON_CREATED: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 456,
+            HEADER_TEXT: "The JSON item received contains a forbidden field named 'created'",
+            CONSOL_TEXT: "The JSON item received contains a forbidden field named 'created'"
+        },
+        ERROR_ON_JSON_MODIFIED: {
+            HTTP_CODE: 422,
+            HEADER_CODE: 457,
+            HEADER_TEXT: "The JSON item received contains a forbidden field named 'modified'",
+            CONSOL_TEXT: "The JSON item received contains a forbidden field named 'modified'"
+        }
+    }
+  
+    console.log("Step 2: Function declarations")
+  
+    console.log("Step 2.1: Load function for updating the Http message content")
+    function updateHttpAnswer( statusCode, headerStatusCode, headerStatusMessage, body) {
+        httpAnswer.statusCode = statusCode;
+        httpAnswer.headers['x-' + COMPANY_NAME + '-' + SERVICE_NAME + '-code']      = headerStatusCode;
+        httpAnswer.headers['x-' + COMPANY_NAME + '-' + SERVICE_NAME + '-message']   = headerStatusMessage;
+        httpAnswer.headers['x-' + COMPANY_NAME + '-' + SERVICE_NAME + '-timeStamp'] = new Date(new Date().toUTCString()).toISOString(); 
+        httpAnswer.body = body;
+    }
+    
+    console.log("Step 2.2: Load function for building the Http message according the context");
+    function message( message , isError = true , body = null) {
+        isError ? console.error( message.CONSOL_TEXT ) : console.log( message.CONSOL_TEXT );
+        var errorBody = {
+            error: message.CONSOL_TEXT,
+            help: HELP_LINK
+        }
+        updateHttpAnswer( message.HTTP_CODE , message.HEADER_CODE , message.HEADER_TEXT , isError ? JSON.stringify(errorBody) : JSON.stringify(body) );
+        callback( null , httpAnswer );
+    }
+    
+    console.log("Step 2.3: Load the callback function for analysing the dynamo table result and redirect to the correct http messsage");
+    function myCallbackForPost( err , res ) {
+        if( err ) { 
+            err.code !== undefined && err.code == 'ConditionalCheckFailedException' ? message( MESSAGES.POST_KO_EXIST ) : message( MESSAGES.POST_KO ); return false; 
+        } 
+        if( item.tenant !== undefined ) { delete item.tenant; }
+        message( MESSAGES.POST_OK , false , item ); return true;
+    }  
+    
+    console.log("Step 2.4: Load function for checking JSON");
+    function isJSON(s) { 
+        try { JSON.parse(s); return true; } catch (e) { return false; } 
+    }
+
+    console.log( "Step 3: Start processing" );
+    
+    console.log( "Step 3.1: Check if event parameters are defined (mandatory)" );
+    if( event === undefined ) { message( MESSAGES.ERROR_ON_EVENT ); return; }
+    
+    console.log( "Step 3.2: Check if header parameters are defined (mandatory)" );
+    if( event.headers === undefined ) { message( MESSAGES.ERROR_ON_HEADERS ); return; }
+    
+    console.log( "Step 3.3: Check if the header parameter Accept is application/json" );
+    if( event.headers[ "Accept" ] === undefined || (event.headers[ "Accept" ] != 'application/json' && event.headers[ "Accept" ] != 'application/*' && event.headers[ "Accept" ] != '*/*') ) { message( MESSAGES.ERROR_ON_ACCEPT ); return; }
+    
+    console.log( "Step 3.4: Check if tenant header parameter is defined (mandatory)" );
+    if( event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ] === undefined ) { message( MESSAGES.ERROR_ON_TENANT ); return; } 
+    
+    console.log( "Step 3.5: Check if tenant header parameter is not an empty string" );
+    if ( typeof event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ] != 'string' && event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ].trim().length < 1) { message( MESSAGES.ERROR_ON_TENANT_STRING ); return; }        
+    
+    console.log( "Step 3.6: Check if tenant header parameter is not a too long string; Size detected " + event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ].trim().length );
+    if ( event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ].trim().length > 255 ) { message( MESSAGES.ERROR_ON_TENANT_MAXSIZE ); return; }
+    
+    var tenant = event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ].trim();
+    httpAnswer.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-tenant" ] = tenant;
+    console.log( "Step 3.7: Retrieve the tenant and store it. Tenant is '" + tenant + "'." );
+    
+    console.log( "Step 3.8: Check if the tenant parameter followed the regex " + TENANT_PATTERN );
+    if( !tenant.match(TENANT_PATTERN) ) { message( MESSAGES.ERROR_ON_TENANT_FORMAT ) ; return; }
+ 
+    console.log( "Step 3.8: Check if log/tracer header parameter is defined (optional)" );
+    if( event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ] !== undefined ) {
+        
+        console.log( "Step 3.8.A: Check if log/tracer header parameter is not an empty string" );
+        if ( typeof event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ] != 'string' && event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ].trim().length < 1) { message( MESSAGES.ERROR_ON_LOG_STRING ); return; }    
+        
+        console.log( "Step 3.8.B: Check if log/tracer header parameter is not a too long string. Size detected " +event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ].trim().length );
+        if ( event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ].trim().length > 255 ) { message( MESSAGES.ERROR_ON_LOG_MAXSIZE ); return; }
+        
+        console.log( "Step 3.8.C: Check if log/tracer header parameter followed the pattern " + LOG_PATTERN );
+        var log = event.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ].trim();
+        if( !log.match(LOG_PATTERN) ) { message( MESSAGES.ERROR_ON_LOG_FORMAT ); return; }
+        
+        httpAnswer.headers[ "x-" + COMPANY_NAME + '-' + SERVICE_NAME + "-log" ] = log;
+        console.log( "Step 3.8.D: Retrieve the log/tracer and store it. Log is '" + log + "'." );
+    }
+
+    console.log( "Step 3.9: Check if the HTTP verb is defined" );
+    if( event.httpMethod === undefined ) { message( MESSAGES.ERROR_ON_CONTEXT ); return; }
+    
+    console.log( "Step 3.10: Check if the HTTP verb is well POST" );
+    if( event.httpMethod != 'POST' ) { message( MESSAGES.ERROR_ON_VERB ); return; }
+
+    console.log( "Step 3.11: Check if path parameters are defined" );
+    if( event.pathParameters === undefined ) { message( MESSAGES.ERROR_ON_PATH ); return; }
+    
+    console.log( "Step 3.12: Check if mandatory id path parameter is well defined" );
+    if( event.pathParameters.id === undefined ) { message( MESSAGES.ERROR_ON_PATH_ID ); return; }
+    
+    console.log( "Step 3.13: Check if mandatory id path parameter is a string and not empty" );    
+    if ( typeof event.pathParameters.id !== 'string' || event.pathParameters.id.trim().length < 1) { message( MESSAGES.ERROR_ON_PATH_ID_STRING ); return; }
+                
+    console.log( "Step 3.14: Check if mandatory id path parameter is not too long ( > 255 ). Size detected => " + event.pathParameters.id.trim().length );
+    if ( event.pathParameters.id.trim().length > 255 ) { message( MESSAGES.ERROR_ON_PATH_ID_MAXSIZE ); return; }
+
+    var identifier = event.pathParameters.id.trim();
+    console.log( "Step 3.15: Check the identifier format with the regex " + ID_PATTERN  );
+    if( !tenant.match(ID_PATTERN) ) { message( MESSAGES.ERROR_ON_ID_FORMAT ) ; return; }
+
+    console.log( "Step 3.16: Check if the body content a JSON" );
+    if( event.body === undefined ) { message( MESSAGES.ERROR_ON_BODY ); return false; }
+    
+    console.log( "Step 3.17: Retrieve the body content" );
+    var item = event.body; 
+
+    console.log( "Step 3.18: Check if the JSON is defined after the parsing" );
+    if( item === undefined ) { message( MESSAGES.ERROR_ON_JSON2 ); return false; }
+      
+    
+    
+    
+    console.log( "Step 3.19: Check if the body is well a JSON" );  
+    if( !isJSON(item) ) { message( MESSAGES.ERROR_ON_JSON3 ); return; }
+    item = JSON.parse(item);  
+        
+    
+    
+        
+    console.log( "Step 3.19: Check if the JSON item contains an identifier" );
+    if( item.id === undefined   ) {  
+        console.log( "Step 3.19.A: No identifier within the body so add it from the path parameter (id=" + identifier +")" );
+        item.id = identifier;
+    } else {
+        console.log( "Step 3.19.B: Check if the body identifier is the same that the path parameter (bid=" + item.id + " <> pid=" + identifier +")" );
+        if( identifier != item.id ) { message( MESSAGES.ERROR_ON_ID ); return; }
+    }
+     
+    //httpAnswer.body = JSON.stringify(event);    
+    console.log( "Step 3.20: Check that the JSON item does not contain a creation date" );
+    if( item.created !== undefined ) { message( MESSAGES.ERROR_ON_JSON_CREATED ); return false; }
+        
+    console.log( "Step 3.21: Check that the JSON item does not contain a modification date" );
+    if( item.modified !== undefined ) { message( MESSAGES.ERROR_ON_JSON_MODIFIED ); return false; }
+        
+    console.log( "Step 3.22: Add the tenant mandatory field for the request" );
+    item.tenant = tenant;
+        
+    console.log( "Step 3.18: Add the creation date" );
+    item.created = new Date(new Date().toUTCString()).toISOString();
+        
+    console.log( "Step 3.23: Prepare the dynamo request" );
+    var request = {
+        TableName: DYNAMO_TABLE,
+        Item: item,
+        ConditionExpression: 'attribute_not_exists(id)'
+    }
+        
+    console.log( "Step 3.24: Launch the request " + JSON.stringify(request) );
+    dynamoDB.putItem( request , myCallbackForPost );
+};
